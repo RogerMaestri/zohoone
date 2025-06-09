@@ -1,27 +1,26 @@
-string button.botaoatualizarentregacorreiosLuciene1(String recordId)
+void automation.atualizarStatusCorreios(String dealId)
 {
-// 1) Captura do DealId a partir do parâmetro
-dealId = recordId;
-info "=== Iniciando rastreamento via botão ===";
-info "DealId (recordId): " + dealId;
-// 2) Validação
-if(isEmpty(dealId))
+info "=== Iniciando rastreamento sem quebras de linha ===";
+info "DealId: " + dealId;
+if(dealId == null || dealId == "")
 {
-	return "ERRO: Nenhum ID foi recebido como parâmetro.";
+	info "ERRO: dealId nulo ou vazio.";
+	return;
 }
-// 3) Buscar registro do Negócio no CRM
-dealDetails = zoho.crm.getRecordById("Deals",dealId);
+dealDetails = zoho.crm.getRecordById("Deals",dealId.toLong());
 if(isEmpty(dealDetails))
 {
-	return "ERRO: Nenhum registro encontrado para esse DealId.";
+	info "ERRO: Nenhum registro retornado para o negócio.";
+	return;
 }
-// 4) Extrair o código de rastreamento
 rastreio = dealDetails.get("Nro_Rastreamento_Correios");
-if(isEmpty(rastreio))
+if(rastreio == null || isEmpty(rastreio))
 {
-	return "ERRO: Campo 'Nro_Rastreamento_Correios' está vazio.";
+	info "ERRO: Campo 'Nro_Rastreamento_Correios' vazio.";
+	return;
 }
-// 5) Configurações dos Correios
+info "Código de rastreamento => " + rastreio;
+// Credenciais
 usuario = "trimaf2020";
 codigoAcesso = "4klV3PQhVpEgEx1NQtBgnSZldHpRcOp1fDWXzxof";
 cartaoPostagem = "0075526450";
@@ -35,7 +34,7 @@ headersToken.put("Accept","application/json");
 bodyToken = Map();
 bodyToken.put("numero",cartaoPostagem);
 tokenUrl = baseUrl + "/v1/autentica/cartaopostagem";
-// 6) Obter o Token via POST
+// 1) Obter token
 tokenResponse = invokeurl
 [
 	url :tokenUrl
@@ -43,13 +42,14 @@ tokenResponse = invokeurl
 	parameters:bodyToken.toString()
 	headers:headersToken
 ];
-info "Resposta token => " + tokenResponse;
+info "Retorno token => " + tokenResponse;
 tokenCorreios = tokenResponse.get("token");
 if(tokenCorreios == null || isEmpty(tokenCorreios))
 {
-	return "ERRO: Falha ao extrair 'token' da resposta.";
+	info "ERRO: Não foi possível extrair 'token'.";
+	return;
 }
-// 7) Consultar rastreamento
+// 2) Rastrear objeto
 rastreioUrl = "https://api.correios.com.br/srorastro/v1/objetos/" + rastreio + "?resultado=T";
 headersRastreio = Map();
 headersRastreio.put("Authorization","Bearer " + tokenCorreios);
@@ -60,30 +60,32 @@ rastreioResponse = invokeurl
 	type :GET
 	headers:headersRastreio
 ];
-info "Resposta rastreamento => " + rastreioResponse;
+info "Retorno rastreamento => " + rastreioResponse;
 objetos = rastreioResponse.get("objetos");
 if(isEmpty(objetos))
 {
-	return "ERRO: Resposta sem 'objetos' no rastreamento.";
+	info "ERRO: Resposta sem 'objetos'.";
+	return;
 }
 obj = objetos.get(0);
 eventos = obj.get("eventos");
 if(isEmpty(eventos))
 {
-	return "ERRO: Nenhum evento encontrado no histórico de rastreamento.";
+	info "ERRO: Nenhum evento encontrado.";
+	return;
 }
-// 8) Atualizar Status_Correios com o último evento
+// 3) Atualizar Status_Correios
 ultimoEvento = eventos.get(0);
 descUltimo = ultimoEvento.get("descricao");
 if(isEmpty(descUltimo))
 {
-	descUltimo = "Sem descrição no último evento";
+	descUltimo = "Sem descrição do último evento";
 }
 updMap = Map();
 updMap.put("Status_Correios",descUltimo);
 updateResp = zoho.crm.updateRecord("Deals",dealId,updMap);
-info "Atualização do Status => " + updateResp;
-// 9) Construir texto da Nota
+info "Retorno update => " + updateResp;
+// 4) Montar Nota sem quebras de linha
 conteudoNota = "Eventos de Rastreamento => ";
 for each  ev in eventos
 {
@@ -139,6 +141,8 @@ for each  ev in eventos
 	{
 		localTxt = "(Unidade não informada)";
 	}
+	// Usar um separador " | " ou " || " para simular quebra
+	// (com espaços e travessão).
 	conteudoNota = conteudoNota + " || [Data: " + dataEvt + ", Descrição: " + descEvt + ", Local: " + localTxt;
 	if(detalheEvt != "")
 	{
@@ -146,14 +150,13 @@ for each  ev in eventos
 	}
 	conteudoNota = conteudoNota + "] ";
 }
-// 10) Criar Nota no Negócio (Zoho define Created_By automaticamente)
 notaMap = Map();
 notaMap.put("Parent_Id",dealId);
 notaMap.put("Note_Title","Rastreamento Correios - " + rastreio);
 notaMap.put("Note_Content",conteudoNota);
 notaMap.put("se_module","Deals");
 notaResp = zoho.crm.createRecord("Notes",notaMap);
-info "Criação de Nota => " + notaResp;
-// 11) Retornar mensagem para exibir ao usuário
-return "Rastreamento atualizado com sucesso para o Deal " + dealId;
+info "Retorno criação de nota => " + notaResp;
+info "=== Fim do processo ===";
+return;
 }
