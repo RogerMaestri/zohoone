@@ -1,99 +1,124 @@
-### **Documentação Técnica: Integração de Rastreamento Correios no Zoho CRM (Versão 2025)**
+### **Manual Técnico de Integração: Zoho CRM & API Correios (Rastreamento)**
 
-**Versão do Documento:** 1.0
-**Data:** 09/06/2024
+**Versão do Documento:** 2.0 (Final/Estável)
+**Data:** 09/06/2025
 **Autor:** Especialista de IA
-**Status:** Final e Estável
 
-#### **1. Visão Geral**
+#### **1.0 Introdução**
 
-Esta documentação descreve as duas funções Deluge desenvolvidas para integrar o Zoho CRM com a API de rastreamento dos Correios. As funções foram corrigidas e estabilizadas para se alinharem com os requisitos atuais da API dos Correios, resolvendo problemas de autenticação e formatação de requisição.
+**1.1. Propósito**
+Este documento fornece uma análise técnica completa do sistema de integração entre o Zoho CRM e a API dos Correios. Seu objetivo é servir como um manual de referência para desenvolvedores, administradores de sistema e equipes de suporte técnico, detalhando a arquitetura, a lógica de implementação, os procedimentos de implantação e a manutenção contínua das funcionalidades.
 
-O sistema é composto por dois componentes principais:
-1.  **Função de Botão:** Para atualização manual e imediata por um usuário.
-2.  **Função de Automação:** Para atualização automática em background, acionada por regras de fluxo de trabalho ou agendadores.
+**1.2. Escopo**
+O sistema automatiza a consulta de rastreamento de objetos postados nos Correios e reflete essas informações dentro do módulo "Deals" (Negócios) do Zoho CRM. O escopo inclui:
+*   Autenticação segura na API dos Correios para obtenção de um token de acesso.
+*   Consulta de eventos de rastreamento para um código específico.
+*   Atualização de um campo de status no registro do Negócio.
+*   Criação de uma nota com o histórico completo de rastreamento.
 
----
-
-### **2. Componente 1: Função de Botão (Ação do Usuário)**
-
-*   **Nome da Função:** `button.botaoatualizarentregacorreiosLuciene1`
-*   **Tipo:** Botão de Ação do Usuário (associado a um botão no módulo "Deals").
-*   **Objetivo:** Permitir que um usuário do CRM clique em um botão para forçar a atualização imediata do status de rastreamento de uma encomenda associada a um Negócio.
-
-#### **Parâmetros de Entrada:**
-*   `String recordId`: O ID do registro do Negócio (Deal) que acionou o botão.
-
-#### **Comportamento em Caso de Sucesso:**
-1.  Obtém um token de acesso válido da API dos Correios.
-2.  Consulta o histórico de rastreamento do código presente no campo `Nro_Rastreamento_Correios`.
-3.  Atualiza o campo `Status_Correios` com a descrição do último evento de rastreamento.
-4.  Cria uma nova Nota no registro do Negócio, contendo o histórico completo de todos os eventos de rastreamento.
-5.  **Retorna uma mensagem de sucesso diretamente para o usuário na interface do CRM** (ex: "Rastreamento atualizado com sucesso!").
-
-#### **Comportamento em Caso de Erro:**
-*   **Retorna uma mensagem de erro clara e descritiva para o usuário na interface do CRM** (ex: "ERRO DE AUTENTICAÇÃO (401): Credenciais inválidas..."). A execução é interrompida imediatamente após a detecção do erro.
-
-#### **Uso Prático:**
-*   Vincular esta função a um botão personalizado na visualização de registro do módulo "Deals".
+**1.3. Arquitetura do Sistema**
+A solução é implementada inteiramente em **Deluge**, a linguagem de script proprietária da Zoho, e consiste em dois artefatos de código distintos, mas funcionalmente semelhantes:
+1.  **Função de Interface de Usuário (Botão):** `button.botaoatualizarentregacorreiosLuciene1`
+2.  **Função de Processamento em Background (Automação):** `automation.atualizarStatusCorreios`
 
 ---
 
-### **3. Componente 2: Função de Automação (Background)**
+#### **2.0 Pré-requisitos e Configuração de Ambiente**
 
-*   **Nome da Função:** `automation.atualizarStatusCorreios`
-*   **Tipo:** Automação (Background).
-*   **Objetivo:** Executar de forma automática, sem intervenção do usuário, para manter o status de rastreamento atualizado.
+**2.1. Configuração do Zoho CRM**
+As seguintes customizações no módulo **Deals** (API Name: `Deals`) são mandatórias:
+*   **Campo de Código de Rastreamento:**
+    *   **Nome do Campo:** `Nro_Rastreamento_Correios`
+    *   **Tipo de Dado:** Linha Única (String)
+*   **Campo de Status:**
+    *   **Nome do Campo:** `Status_Correios`
+    *   **Tipo de Dado:** Linha Única ou Lista de Opções (String)
 
-#### **Parâmetros de Entrada:**
-*   `String dealId`: O ID do registro do Negócio (Deal) a ser processado.
-
-#### **Comportamento em Caso de Sucesso:**
-1.  Executa o mesmo fluxo da função de botão: obtém token, consulta rastreamento, atualiza o campo `Status_Correios` e cria a nota com o histórico.
-2.  Registra cada passo do processo nos logs da função para fins de auditoria e depuração.
-
-#### **Comportamento em Caso de Erro:**
-*   **Interrompe a execução silenciosamente e registra uma mensagem de erro detalhada nos logs da função** (Setup > Developer Space > Functions > Logs). Não exibe nenhuma mensagem para o usuário, garantindo que os processos em massa não sejam interrompidos por pop-ups de erro.
-
-#### **Uso Prático:**
-*   Associar esta função a uma **Regra de Fluxo de Trabalho** (Workflow Rule) que é acionada quando, por exemplo, um Negócio atinge uma determinada etapa ou quando o campo de rastreamento é preenchido.
-*   Pode também ser chamada por um **Agendador** (Scheduler) para rodar periodicamente (ex: diariamente) em uma lista de Negócios em aberto.
+**2.2. Credenciais da API dos Correios**
+A autenticação requer credenciais obtidas através do portal **SIGEP Web** dos Correios:
+*   `usuario`: O nome de usuário de acesso ao portal (ex: "trimaf2020").
+*   `codigoAcesso`: Um token de longa duração gerado no portal. **Esta é a principal credencial e o ponto mais comum de falha se expirar.**
+*   `cartaoPostagem`: O número do cartão de postagem associado ao contrato.
 
 ---
 
-### **4. Pontos Técnicos Críticos e Soluções Implementadas**
+### **3.0 Análise Técnica Detalhada do Código**
 
-As seguintes soluções foram implementadas em ambas as funções para garantir a estabilidade e o funcionamento correto com a API atual dos Correios.
+Ambas as funções seguem um fluxo lógico idêntico. A análise abaixo detalha os blocos de código e as decisões técnicas por trás deles.
 
-#### **4.1. Formato do Corpo da Requisição (Resolução do Erro 400)**
-*   **Problema:** A API dos Correios espera receber o corpo da requisição de autenticação como uma **string de texto literal no formato JSON**, e não como um objeto nativo.
-*   **Solução:** O mapa Deluge (`bodyToken`) que contém o número do cartão de postagem é explicitamente convertido para uma string antes de ser enviado na requisição.
+#### **Bloco 1: Inicialização e Validação de Dados**
+*   **Lógica:** A função primeiro valida se recebeu um `dealId` válido e se o registro correspondente existe no CRM. Em seguida, verifica se o campo de rastreamento está preenchido.
+*   **Decisão Técnica:** A validação `if(variavel == null || isEmpty(variavel))` é usada para evitar erros de tempo de execução em Deluge, que não permite que a função `isEmpty()` seja chamada em uma variável nula.
+
+#### **Bloco 2: Construção da Requisição de Autenticação**
+*   **Lógica:** Prepara os componentes necessários para a chamada de autenticação na API dos Correios.
+*   **Componentes:**
+    *   `authString`: Concatenação de `usuario` e `codigoAcesso`, separados por dois pontos (`:`).
+    *   `encodedAuth`: A `authString` é codificada em Base64 usando `zoho.encryption.base64Encode()`. Este é o padrão para autenticação **HTTP Basic**.
+    *   `headersToken`: Um `Map` Deluge contendo os cabeçalhos HTTP.
+        *   `Authorization`: "Basic " + `encodedAuth`.
+        *   `Content-Type`: "application/json", para informar à API que o corpo da requisição está nesse formato.
+    *   `bodyToken`: Um `Map` Deluge contendo o payload da requisição.
+        *   `numero`: O valor da variável `cartaoPostagem`.
+
+#### **Bloco 3: Execução da Chamada de API (`invokeurl`) para Obtenção do Token**
+*   **Lógica:** Realiza a chamada `POST` para o endpoint de autenticação. Esta é a parte mais crítica da integração.
     ```deluge
-    // O uso de .toString() é mandatório para evitar o erro "400 Bad Request".
-    body: bodyToken.toString()
+    tokenResponseDetailed = invokeurl
+    [
+        url : "https://api.correios.com.br/token/v1/autentica/cartaopostagem"
+        type : POST
+        body: bodyToken.toString() // Ponto Crítico 1
+        headers: headersToken
+        detailed: true // Ponto Crítico 2
+    ];
     ```
+*   **Análise Técnica dos Pontos Críticos:**
+    1.  **`body: bodyToken.toString()`**: A API dos Correios espera que o corpo da requisição seja uma **string de texto** formatada como JSON, e não um objeto. O método `.toString()` em um `Map` Deluge produz a representação em string exata (`{"numero":"0075526450"}`). Não usar `.toString()` resulta no erro **400 Bad Request** ("O corpo da requisição está inválido").
+    2.  **`detailed: true`**: Este parâmetro instrui o Deluge a retornar uma resposta detalhada, que é um mapa contendo `responseCode` (o código de status HTTP) e `responseText` (o corpo da resposta como texto). Sem isso, seria impossível distinguir uma falha de autenticação (`401`) de um sucesso (`201`).
 
-#### **4.2. Tratamento Detalhado da Resposta da API**
-*   **Problema:** A chamada padrão `invokeurl` não retorna o código de status HTTP (como 201, 401, 400), impossibilitando o tratamento de erros de forma granular.
-*   **Solução:** O parâmetro `detailed:true` foi adicionado à chamada `invokeurl`. Isso faz com que a resposta seja um mapa contendo `responseCode` e `responseText`.
+#### **Bloco 4: Tratamento da Resposta e Extração do Token**
+*   **Lógica:** Valida a resposta da API e extrai o token de acesso.
     ```deluge
-    // Permite a verificação do código de resposta antes de prosseguir.
     responseCode = tokenResponseDetailed.get("responseCode");
-    ```
-
-#### **4.3. Conversão da Resposta JSON (Parsing)**
-*   **Problema:** Com `detailed:true`, o corpo da resposta (`responseText`) é recebido como uma **string de texto**, não como um mapa Deluge. Não é possível usar `.get("token")` diretamente nela.
-*   **Solução:** A string de resposta é convertida (parsed) em um mapa Deluge usando o método nativo `.toCollection()`, que é a forma correta e universal no Zoho CRM.
-    ```deluge
-    // Converte a string JSON em um mapa para permitir a extração de dados.
-    tokenResponse = tokenResponseDetailed.get("responseText").toCollection();
+    // ... validações de código ...
+    tokenResponse = tokenResponseDetailed.get("responseText").toCollection(); // Ponto Crítico 3
     tokenCorreios = tokenResponse.get("token");
     ```
+*   **Análise Técnica do Ponto Crítico:**
+    3.  **`.toCollection()`**: O `responseText` é uma string. Para acessar seus dados internos (como a chave "token"), ele precisa ser convertido (parsed) em um objeto Deluge (um `Map` ou `Collection`). O método `.toCollection()` é a função nativa do Deluge para realizar essa conversão de string JSON para objeto.
 
-#### **4.4. Gestão de Credenciais**
-*   **Ponto Crítico:** O `codigoAcesso` é a principal credencial para a autenticação. Se ele expirar ou for revogado no portal SIGEP Web dos Correios, ambas as funções começarão a falhar com um erro `401 Unauthorized`.
-*   **Manutenção:** A única manutenção periódica necessária é a verificação e, se preciso, a renovação do `codigoAcesso` diretamente no código das duas funções.
+#### **Bloco 5: Consulta de Rastreamento**
+*   **Lógica:** Usa o `tokenCorreios` obtido para fazer uma requisição `GET` autenticada ao endpoint de rastreamento.
+*   **Autenticação:** A autenticação aqui usa o padrão **Bearer Token**. O cabeçalho `Authorization` é formatado como "Bearer " + `tokenCorreios`.
+
+#### **Bloco 6: Processamento dos Dados e Atualização do CRM**
+*   **Lógica:** Navega pela estrutura JSON da resposta de rastreamento (`objetos` -> `eventos`), extrai a descrição do evento mais recente (`eventos.get(0)`) e a utiliza para atualizar o campo `Status_Correios` através de `zoho.crm.updateRecord()`.
+
+#### **Bloco 7: Criação da Nota de Histórico**
+*   **Lógica:** Itera sobre **todos** os eventos retornados, formata uma string longa contendo data, descrição e local de cada evento, e cria um novo registro no módulo "Notes" associado ao Negócio (`Parent_Id`).
 
 ---
 
-Este documento serve como um guia completo para o uso e a manutenção da integração de rastreamento dos Correios no Zoho CRM.
+### **4.0 Diferenças Funcionais: Botão vs. Automação**
+
+| Característica | Função de Botão (`button...`) | Função de Automação (`automation...`) | Racional Técnico |
+| :--- | :--- | :--- | :--- |
+| **Tipo de Retorno** | `string` | `void` | O botão precisa retornar uma mensagem para a UI do usuário. A automação não tem UI e não deve retornar nada. |
+| **Tratamento de Erro** | `return "Mensagem de Erro";` | `info "Mensagem de Erro"; return;` | Erros do botão são exibidos em um pop-up para o usuário. Erros da automação são gravados nos logs para análise do administrador. |
+| **Conversão de ID** | Usa `recordId` diretamente. | Usa `dealId.toLong()`. | Funções de automação frequentemente recebem IDs como String, mas as APIs do CRM (`updateRecord`, `getRecordById`) exigem o tipo `Long`. |
+
+---
+
+### **5.0 Guia de Troubleshooting e Manutenção**
+
+| Erro / Sintoma | Causa Provável | Solução |
+| :--- | :--- | :--- |
+| **Pop-up de erro: "ERRO DE AUTENTICAÇÃO (401)"** | O `codigoAcesso` expirou, foi revogado ou está incorreto. | 1. Acesse o portal SIGEP Web dos Correios. 2. Gere um novo `codigoAcesso`. 3. Atualize o valor da variável `codigoAcesso` em **ambas** as funções Deluge. |
+| **Log de erro: "ERRO NA API CORREIOS (Token). Código: 400"** | A formatação do `body` na chamada `invokeurl` está incorreta. | Verifique se a linha da chamada de autenticação está usando `body: bodyToken.toString()`. |
+| **Log de erro: "ERRO: Token não encontrado na resposta..."** | A estrutura da resposta JSON da API dos Correios pode ter mudado, ou o parsing falhou. | Verifique o log completo da `tokenResponseDetailed` para ver a estrutura exata do JSON retornado e ajuste a extração do token se necessário. |
+| **A automação não executa.** | A regra de fluxo de trabalho está mal configurada, ou o usuário associado à regra não tem permissão para executar funções. | Revise a configuração do Workflow (gatilho, critérios) e as permissões do usuário. |
+| **A função para com erro `NullPointerException` em `isEmpty()`** | Uma variável está sendo passada para `isEmpty()` sem antes ser verificada se é `null`. | Garanta que todas as validações sigam o padrão `if(variavel == null || isEmpty(variavel))`. |
+
+---
+Este manual fornece a base técnica necessária para entender, manter e depurar a integração. Qualquer modificação futura deve ser documentada e testada com base nos princípios aqui estabelecidos.
