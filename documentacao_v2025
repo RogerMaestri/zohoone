@@ -1,0 +1,99 @@
+### **Documentação Técnica: Integração de Rastreamento Correios no Zoho CRM (Versão 2025)**
+
+**Versão do Documento:** 1.0
+**Data:** 09/06/2024
+**Autor:** Especialista de IA
+**Status:** Final e Estável
+
+#### **1. Visão Geral**
+
+Esta documentação descreve as duas funções Deluge desenvolvidas para integrar o Zoho CRM com a API de rastreamento dos Correios. As funções foram corrigidas e estabilizadas para se alinharem com os requisitos atuais da API dos Correios, resolvendo problemas de autenticação e formatação de requisição.
+
+O sistema é composto por dois componentes principais:
+1.  **Função de Botão:** Para atualização manual e imediata por um usuário.
+2.  **Função de Automação:** Para atualização automática em background, acionada por regras de fluxo de trabalho ou agendadores.
+
+---
+
+### **2. Componente 1: Função de Botão (Ação do Usuário)**
+
+*   **Nome da Função:** `button.botaoatualizarentregacorreiosLuciene1`
+*   **Tipo:** Botão de Ação do Usuário (associado a um botão no módulo "Deals").
+*   **Objetivo:** Permitir que um usuário do CRM clique em um botão para forçar a atualização imediata do status de rastreamento de uma encomenda associada a um Negócio.
+
+#### **Parâmetros de Entrada:**
+*   `String recordId`: O ID do registro do Negócio (Deal) que acionou o botão.
+
+#### **Comportamento em Caso de Sucesso:**
+1.  Obtém um token de acesso válido da API dos Correios.
+2.  Consulta o histórico de rastreamento do código presente no campo `Nro_Rastreamento_Correios`.
+3.  Atualiza o campo `Status_Correios` com a descrição do último evento de rastreamento.
+4.  Cria uma nova Nota no registro do Negócio, contendo o histórico completo de todos os eventos de rastreamento.
+5.  **Retorna uma mensagem de sucesso diretamente para o usuário na interface do CRM** (ex: "Rastreamento atualizado com sucesso!").
+
+#### **Comportamento em Caso de Erro:**
+*   **Retorna uma mensagem de erro clara e descritiva para o usuário na interface do CRM** (ex: "ERRO DE AUTENTICAÇÃO (401): Credenciais inválidas..."). A execução é interrompida imediatamente após a detecção do erro.
+
+#### **Uso Prático:**
+*   Vincular esta função a um botão personalizado na visualização de registro do módulo "Deals".
+
+---
+
+### **3. Componente 2: Função de Automação (Background)**
+
+*   **Nome da Função:** `automation.atualizarStatusCorreios`
+*   **Tipo:** Automação (Background).
+*   **Objetivo:** Executar de forma automática, sem intervenção do usuário, para manter o status de rastreamento atualizado.
+
+#### **Parâmetros de Entrada:**
+*   `String dealId`: O ID do registro do Negócio (Deal) a ser processado.
+
+#### **Comportamento em Caso de Sucesso:**
+1.  Executa o mesmo fluxo da função de botão: obtém token, consulta rastreamento, atualiza o campo `Status_Correios` e cria a nota com o histórico.
+2.  Registra cada passo do processo nos logs da função para fins de auditoria e depuração.
+
+#### **Comportamento em Caso de Erro:**
+*   **Interrompe a execução silenciosamente e registra uma mensagem de erro detalhada nos logs da função** (Setup > Developer Space > Functions > Logs). Não exibe nenhuma mensagem para o usuário, garantindo que os processos em massa não sejam interrompidos por pop-ups de erro.
+
+#### **Uso Prático:**
+*   Associar esta função a uma **Regra de Fluxo de Trabalho** (Workflow Rule) que é acionada quando, por exemplo, um Negócio atinge uma determinada etapa ou quando o campo de rastreamento é preenchido.
+*   Pode também ser chamada por um **Agendador** (Scheduler) para rodar periodicamente (ex: diariamente) em uma lista de Negócios em aberto.
+
+---
+
+### **4. Pontos Técnicos Críticos e Soluções Implementadas**
+
+As seguintes soluções foram implementadas em ambas as funções para garantir a estabilidade e o funcionamento correto com a API atual dos Correios.
+
+#### **4.1. Formato do Corpo da Requisição (Resolução do Erro 400)**
+*   **Problema:** A API dos Correios espera receber o corpo da requisição de autenticação como uma **string de texto literal no formato JSON**, e não como um objeto nativo.
+*   **Solução:** O mapa Deluge (`bodyToken`) que contém o número do cartão de postagem é explicitamente convertido para uma string antes de ser enviado na requisição.
+    ```deluge
+    // O uso de .toString() é mandatório para evitar o erro "400 Bad Request".
+    body: bodyToken.toString()
+    ```
+
+#### **4.2. Tratamento Detalhado da Resposta da API**
+*   **Problema:** A chamada padrão `invokeurl` não retorna o código de status HTTP (como 201, 401, 400), impossibilitando o tratamento de erros de forma granular.
+*   **Solução:** O parâmetro `detailed:true` foi adicionado à chamada `invokeurl`. Isso faz com que a resposta seja um mapa contendo `responseCode` e `responseText`.
+    ```deluge
+    // Permite a verificação do código de resposta antes de prosseguir.
+    responseCode = tokenResponseDetailed.get("responseCode");
+    ```
+
+#### **4.3. Conversão da Resposta JSON (Parsing)**
+*   **Problema:** Com `detailed:true`, o corpo da resposta (`responseText`) é recebido como uma **string de texto**, não como um mapa Deluge. Não é possível usar `.get("token")` diretamente nela.
+*   **Solução:** A string de resposta é convertida (parsed) em um mapa Deluge usando o método nativo `.toCollection()`, que é a forma correta e universal no Zoho CRM.
+    ```deluge
+    // Converte a string JSON em um mapa para permitir a extração de dados.
+    tokenResponse = tokenResponseDetailed.get("responseText").toCollection();
+    tokenCorreios = tokenResponse.get("token");
+    ```
+
+#### **4.4. Gestão de Credenciais**
+*   **Ponto Crítico:** O `codigoAcesso` é a principal credencial para a autenticação. Se ele expirar ou for revogado no portal SIGEP Web dos Correios, ambas as funções começarão a falhar com um erro `401 Unauthorized`.
+*   **Manutenção:** A única manutenção periódica necessária é a verificação e, se preciso, a renovação do `codigoAcesso` diretamente no código das duas funções.
+
+---
+
+Este documento serve como um guia completo para o uso e a manutenção da integração de rastreamento dos Correios no Zoho CRM.
