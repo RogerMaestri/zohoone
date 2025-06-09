@@ -1,0 +1,173 @@
+/*
+ * =====================================================================================
+ * FUNÇÃO DE AUTOMAÇÃO PARA ATUALIZAÇÃO DE RASTREAMENTO - VERSÃO FINAL E ESTÁVEL
+ * =====================================================================================
+ *
+ * PROPÓSITO:
+ * - Executar em background (via Workflow, Scheduler, etc.) para manter o status
+ *   de rastreamento dos Correios atualizado automaticamente.
+ *
+ * CORREÇÕES APLICADAS:
+ * 1. A chamada de autenticação foi ajustada para enviar o corpo como uma string JSON
+ *    (body: bodyToken.toString()), resolvendo o erro "400 Bad Request" da API.
+ * 2. Adicionada validação do código de resposta HTTP (401, 400, etc.) para
+ *    interromper a execução e registrar o erro específico nos logs.
+ * 3. Adicionada a conversão da resposta do token de string para mapa usando .toCollection().
+ * 4. Melhoradas as validações de 'null' para maior robustez.
+ *
+*/
+void automation.atualizarStatusCorreios(String dealId)
+{
+	info "=== Iniciando automação de rastreamento para o Deal ID: " + dealId + " ===";
+	// 1) Validação do ID
+	if(dealId == null || isEmpty(dealId))
+	{
+		info "ERRO FATAL: A automação foi chamada sem um ID de Negócio (dealId).";
+		return;
+	}
+	
+	// 2) Busca e validação do registro
+	dealDetails = zoho.crm.getRecordById("Deals",dealId.toLong());
+	if(dealDetails == null || isEmpty(dealDetails))
+	{
+		info "ERRO: Nenhum registro de Negócio encontrado para o ID: " + dealId;
+		return;
+	}
+	
+	// 3) Extração e validação do código de rastreamento
+	rastreio = dealDetails.get("Nro_Rastreamento_Correios");
+	if(rastreio == null || isEmpty(rastreio))
+	{
+		info "AVISO: O campo 'Nro_Rastreamento_Correios' está vazio para o Deal ID " + dealId + ". Processo interrompido.";
+		return;
+	}
+	info "Rastreando o código: " + rastreio;
+	
+	// 4) Credenciais e Configurações
+	usuario = "trimaf2020";
+	// =============================== AÇÃO NECESSÁRIA ===============================
+	// SUBSTITUA O VALOR ABAIXO PELO SEU CÓDIGO DE ACESSO VÁLIDO.
+	codigoAcesso = "COLE_SEU_NOVO_CODIGO_DE_ACESSO_AQUI";
+	// ===============================================================================
+	cartaoPostagem = "0075526450";
+	
+	// 5) Obtenção do Token de Autenticação
+	tokenUrl = "https://api.correios.com.br/token/v1/autentica/cartaopostagem";
+	authString = usuario + ":" + codigoAcesso;
+	encodedAuth = zoho.encryption.base64Encode(authString);
+	headersToken = Map();
+	headersToken.put("Authorization","Basic " + encodedAuth);
+	headersToken.put("Content-Type","application/json");
+	bodyToken = Map();
+	bodyToken.put("numero",cartaoPostagem);
+	
+	// *** CORREÇÃO CRÍTICA APLICADA AQUI ***
+	// O corpo (body) é enviado como uma STRING contendo o JSON.
+	tokenResponseDetailed = invokeurl
+	[
+		url :tokenUrl
+		type :POST
+		body:bodyToken.toString()
+		headers:headersToken
+		detailed:true
+	];
+	
+	// Validação da resposta da autenticação
+	responseCode = tokenResponseDetailed.get("responseCode");
+	if(responseCode == 401)
+	{
+		info "ERRO DE AUTENTICAÇÃO (401): Credenciais inválidas para o usuário " + usuario + ". Verifique o 'codigoAcesso' na função.";
+		return;
+	}
+	if(responseCode != 201 && responseCode != 200)
+	{
+		info "ERRO NA API CORREIOS (Token). Código: " + responseCode + ". Resposta: " + tokenResponseDetailed.get("responseText");
+		return;
+	}
+	
+	// Conversão da resposta para um mapa e extração do token
+	tokenResponse = tokenResponseDetailed.get("responseText").toCollection();
+	tokenCorreios = tokenResponse.get("token");
+	if(tokenCorreios == null || isEmpty(tokenCorreios))
+	{
+		info "ERRO: Token não encontrado na resposta da API, mesmo com autenticação bem-sucedida.";
+		return;
+	}
+	
+	// 6) Rastreamento do objeto
+	rastreioUrl = "https://api.correios.com.br/srorastro/v1/objetos/" + rastreio + "?resultado=T";
+	headersRastreio = Map();
+	headersRastreio.put("Authorization","Bearer " + tokenCorreios);
+	rastreioResponse = invokeurl
+	[
+		url :rastreioUrl
+		type :GET
+		headers:headersRastreio
+	];
+	
+	objetos = rastreioResponse.get("objetos");
+	if(objetos == null || isEmpty(objetos))
+	{
+		info "ERRO: Resposta sem 'objetos' no rastreamento para o código " + rastreio + ".";
+		return;
+	}
+	eventos = objetos.get(0).get("eventos");
+	if(eventos == null || isEmpty(eventos))
+	{
+		info "ERRO: Nenhum evento encontrado no histórico de rastreamento para " + rastreio + ".";
+		return;
+	}
+	
+	// 7) Atualização do Status no CRM
+	ultimoEvento = eventos.get(0);
+	descUltimo = ultimoEvento.get("descricao");
+	if(descUltimo == null || isEmpty(descUltimo))
+	{
+		descUltimo = "Sem descrição do último evento";
+	}
+	updMap = Map();
+	updMap.put("Status_Correios",descUltimo);
+	updateResp = zoho.crm.updateRecord("Deals",dealId.toLong(),updMap);
+	info "Status do Deal " + dealId + " atualizado para: '" + descUltimo + "'. Resposta: " + updateResp;
+	
+	// 8) Construção e criação da Nota
+	conteudoNota = "Eventos de Rastreamento => ";
+	for each  ev in eventos
+	{
+		dataEvt = ifnull(ev.get("dtHrCriado"), "Data não informada");
+		descEvt = ifnull(ev.get("descricao"), "Sem descrição");
+		detalheEvt = ifnull(ev.get("detalhe"), "");
+		localTxt = "(Unidade não informada)";
+		unidade = ev.get("unidade");
+		if(unidade != null && !isEmpty(unidade))
+		{
+			tUni = ifnull(unidade.get("tipo"), "Unidade");
+			endObj = unidade.get("endereco");
+			if(endObj != null && !isEmpty(endObj))
+			{
+				cid = ifnull(endObj.get("cidade"), "Desconhecida");
+				uf = ifnull(endObj.get("uf"), "?");
+				localTxt = tUni + " - " + cid + "/" + uf;
+			}
+			else
+			{
+				localTxt = tUni + " - (sem endereço)";
+			}
+		}
+		conteudoNota = conteudoNota + " || [Data: " + dataEvt + ", Descrição: " + descEvt + ", Local: " + localTxt;
+		if(detalheEvt != "")
+		{
+			conteudoNota = conteudoNota + ", Detalhes: " + detalheEvt;
+		}
+		conteudoNota = conteudoNota + "] ";
+	}
+	
+	notaMap = Map();
+	notaMap.put("Parent_Id",dealId.toLong());
+	notaMap.put("Note_Title","Rastreamento Correios (Automático) - " + rastreio);
+	notaMap.put("Note_Content",conteudoNota);
+	notaMap.put("se_module","Deals");
+	notaResp = zoho.crm.createRecord("Notes",notaMap);
+	info "Nota de rastreamento criada para o Deal " + dealId + ". Resposta: " + notaResp;
+	info "=== Fim do processo de automação para o Deal ID: " + dealId + " ===";
+}
