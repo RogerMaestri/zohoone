@@ -3,14 +3,14 @@
  * Argumento : accountId  (String)  -> ID da Conta selecionada na Reativação
  * Retorno   : String (JSON)        -> lista de linhas prontas p/ o subformulário
  *
- * NOVIDADE (v2): coluna "Data Ganho" (api: Data_Ganho)
- *  Para cada negócio, lê o Histórico de Estágios (Stage_History) e pega a data
- *  em que o Stage virou "Closed Won" (Modified_Time da entrada). Essa é a data
- *  em que o negócio foi registrado como GANHO. Negócios nunca ganhos ficam sem
- *  data (coluna em branco).
+ * COLUNA "Data Ganho" (api: Data_Ganho)  [v3]
+ *  Para negócios em "Closed Won", usa Stage_Modified_Time (data da última
+ *  mudança de estágio = data em que virou ganho). Esse campo já vem no
+ *  searchRecords -> sem chamadas extras. Comprovado batendo com o histórico.
+ *  Negócios não ganhos ficam sem data (coluna em branco).
  *
- * OBS: são +1 chamada por negócio (getRelatedRecords). Roda no servidor, sem o
- *  limite de 10s do Client Script.
+ *  (A tentativa anterior via zoho.crm.getRelatedRecords("Stage_History", ...)
+ *   não retorna dados dentro do Deluge, por isso foi trocada.)
  */
 
 string automation.carga_prontuario_negocios_1(string accountId)
@@ -52,35 +52,22 @@ string automation.carga_prontuario_negocios_1(string accountId)
 					pessoa.put("name", contato.get("name"));
 					row.put("Pessoa_Relacionada_Neg_cio", pessoa);
 				}
-				// ---- Data em que o negócio virou "Closed Won" (histórico) ----
-				historico = zoho.crm.getRelatedRecords("Stage_History", "Deals", deal.get("id").toLong());
-				dataGanho = null;
-				if(historico != null)
+				// ---- Data Ganho: só para negócios "Closed Won" ----
+				if(deal.get("Stage") == "Closed Won")
 				{
-					for each  h in historico
+					smt = deal.get("Stage_Modified_Time");
+					if(smt != null)
 					{
-						if(dataGanho == null && h.get("Stage") == "Closed Won")
+						s = smt + "";
+						if(s.indexOf("T") > 0)
 						{
-							mt = h.get("Modified_Time") + "";
-							sep = "T";
-							if(mt.indexOf("T") < 0)
-							{
-								sep = " ";
-							}
-							if(mt.indexOf(sep) > 0)
-							{
-								dataGanho = mt.subString(0, mt.indexOf(sep));
-							}
-							else if(mt.length() >= 10)
-							{
-								dataGanho = mt.subString(0, 10);
-							}
+							row.put("Data_Ganho", s.subString(0, s.indexOf("T")));
+						}
+						else if(s.length() >= 10)
+						{
+							row.put("Data_Ganho", s.subString(0, 10));
 						}
 					}
-				}
-				if(dataGanho != null)
-				{
-					row.put("Data_Ganho", dataGanho);
 				}
 				linhas.add(row);
 				conta = conta + 1;
