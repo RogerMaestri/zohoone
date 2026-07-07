@@ -1,24 +1,21 @@
 /**
- * Carga_Prontuario_Matriz_Oficial (v16 - servidor via função Deluge)
+ * Carga_Prontuario_Matriz_Oficial (v17 - leitura do retorno corrigida)
  * Ferramenta: ZOHO CRM  |  Tipo: Script de Cliente (Client Script)
  * Módulo: Reativacoes  |  Campo: Conta  |  Evento: Field onChange
  *
- * POR QUE MUDOU
- *  Ficou comprovado que a busca do ZDK no navegador NÃO devolve o campo
- *  Contact_Name (vem "undefined") e ainda carrega TODOS os negócios da conta
- *  (ex.: 101), beirando o limite de 10s. Nenhum ajuste no Client Script
- *  resolveria porque o dado do contato simplesmente não chega ao navegador.
+ * FLUXO
+ *  1. Pega a Conta selecionada.
+ *  2. Chama a função Deluge "carga_prontuario_negocios" (roda no servidor e
+ *     devolve as 15 linhas prontas, JÁ com o contato correto).
+ *  3. Interpreta o retorno e popula o subformulário.
  *
- *  Agora TODO o trabalho pesado é feito no servidor pela função Deluge
- *  "carga_prontuario_negocios", que retorna as linhas prontas (com o contato
- *  correto). Este Client Script só chama a função e joga no subformulário.
- *
- * PRÉ-REQUISITO
- *  Criar a função standalone "carga_prontuario_negocios" (ver arquivo
- *  carga_prontuario_negocios.deluge). Argumento: accountId (String).
+ * DETALHES DO RETORNO (comprovados pelo log real)
+ *  - O execute() devolve um OBJETO. O texto JSON fica em: resp._details.output
+ *  - A função monta os objetos separados por vírgula, SEM os colchetes [ ];
+ *    por isso envolvemos o texto com [ ] antes de fazer JSON.parse.
  */
 
-// Loader: mantém a execução suspensa (sem timeout) enquanto a função roda.
+// Loader: suspende o timeout de 10s enquanto a função roda.
 ZDK.Client.showLoader({ type: 'page', template: 'spinner', message: 'Carregando negócios da conta...' });
 
 try {
@@ -29,23 +26,28 @@ try {
     if (!subform) { log('ERRO: subform ausente.'); return; }
     if (!accountData || !accountData.id) { subform.setValue([]); return; }
 
-    // Resolve tudo no servidor (inclui o contato). Retorna JSON com as linhas.
+    // Resolve tudo no servidor (inclui o contato). Retorna as linhas em JSON.
     var resp = ZDK.Apps.CRM.Functions.execute('carga_prontuario_negocios', { 'accountId': accountData.id });
 
-    // Diagnóstico: formato exato do retorno (ajuda a ajustar se necessário).
-    try { log('DEBUG resp = ' + JSON.stringify(resp)); } catch (e) { log('DEBUG resp typeof = ' + (typeof resp)); }
+    // O JSON vem dentro do envelope: resp._details.output (texto).
+    var texto = '';
+    if (resp && resp._details && resp._details.output != null) {
+        texto = '' + resp._details.output;
+    } else if (typeof resp === 'string') {
+        texto = resp;
+    } else if (resp && resp.details && resp.details.output != null) {
+        texto = '' + resp.details.output;
+    }
+    texto = texto.trim();
 
-    // Extrai o texto JSON, tratando os formatos possíveis de retorno do execute().
-    var texto = resp;
-    if (resp && typeof resp === 'object') {
-        texto = resp.output || resp.result || resp.response ||
-                (resp.details ? (resp.details.output || resp.details) : null) || resp;
-        if (texto && typeof texto === 'object') { texto = texto.output || JSON.stringify(texto); }
+    // A função devolve os objetos sem os colchetes -> garante um array JSON válido.
+    if (texto.length > 0 && texto.charAt(0) !== '[') {
+        texto = '[' + texto + ']';
     }
 
     var linhas = [];
     try {
-        linhas = (typeof texto === 'string') ? JSON.parse(texto) : texto;
+        linhas = texto ? JSON.parse(texto) : [];
     } catch (e) {
         log('Falha ao interpretar retorno: ' + e);
         linhas = [];
