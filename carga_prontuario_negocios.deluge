@@ -1,65 +1,69 @@
 /**
- * Função STANDALONE (autônoma): carga_prontuario_negocios
+ * Função AVULSO (Standalone): carga_prontuario_negocios
  * Argumento : accountId  (String)  -> ID da Conta selecionada na Reativação
  * Retorno   : String (JSON)        -> lista de linhas prontas p/ o subformulário
  *
- * IMPORTANTE (formato do editor)
- *  O editor de funções do Zoho exige a linha de ASSINATURA no formato:
- *      <tipo_retorno> <categoria>.<nome>(<tipo> <arg>)
- *  Por isso a 1a linha é:  string standalone.carga_prontuario_negocios(string accountId)
- *  Se o seu editor já mostrar essa assinatura gerada automaticamente
- *  (criação por formulário), cole APENAS o conteúdo de dentro das chaves { }.
+ * COMO CRIAR (fluxo correto — NÃO usar o editor livre de automação):
+ *  1. Configuração > Espaço do desenvolvedor > Funções
+ *  2. + Nova Função
+ *  3. Nome de exibição: Carga Prontuario Negocios
+ *     Nome (API): carga_prontuario_negocios
+ *     Categoria: AVULSO  (é o "Standalone")
+ *  4. Criar -> abre o editor Deluge
+ *  5. Botão "Editar Argumentos": adicionar  accountId  (tipo String)
+ *  6. Colar APENAS o corpo abaixo (SEM linha de assinatura, SEM "standalone.")
+ *  7. Salvar e Executar (informe accountId de teste) -> deve retornar JSON [{...}]
+ *  8. Salvar
  *
  * POR QUE NO SERVIDOR
- *  A busca do Client Script (ZDK) NÃO devolve Contact_Name (vem "undefined")
- *  e ainda traz todos os negócios da conta ao navegador (ex.: 101), beirando
- *  os 10s. Aqui, no servidor, zoho.crm.searchRecords retorna Contact_Name
- *  completo ({id, name}) e monta só as 15 linhas necessárias em ~1s.
+ *  A busca do Client Script (ZDK) NÃO devolve Contact_Name (vem "undefined") e
+ *  ainda traz todos os negócios da conta ao navegador (ex.: 101), beirando os
+ *  10s. Aqui, no servidor, zoho.crm.searchRecords retorna Contact_Name completo
+ *  ({id, name}) e monta só as 15 linhas necessárias em ~1s.
+ *
+ * -------------------- COLE A PARTIR DAQUI (corpo da função) --------------------
  */
 
-string standalone.carga_prontuario_negocios(string accountId)
+linhas = List();
+if(accountId != null && accountId != "")
 {
-	linhas = List();
-	if(accountId != null && accountId != "")
+	criteria = "(Account_Name:equals:" + accountId + ")";
+	deals = zoho.crm.searchRecords("Deals", criteria);
+	conta = 0;
+	for each  deal in deals
 	{
-		criteria = "(Account_Name:equals:" + accountId + ")";
-		deals = zoho.crm.searchRecords("Deals", criteria);
-		conta = 0;
-		for each  deal in deals
+		if(conta < 15)
 		{
-			if(conta < 15)
+			row = Map();
+			owner = deal.get("Owner");
+			if(owner != null)
 			{
-				row = Map();
-				owner = deal.get("Owner");
-				if(owner != null)
-				{
-					row.put("Proprietario", owner.get("name"));
-				}
-				else
-				{
-					row.put("Proprietario", "Nao atribuido");
-				}
-				row.put("Montante", ifnull(deal.get("Amount"), 0));
-				row.put("Estagio", ifnull(deal.get("Stage"), "Sem Estagio"));
-				row.put("Nro_Pedido", deal.get("NroPedidoUniplus"));
-				row.put("Nro_Nota", deal.get("NroNotaFiscal"));
-				row.put("Nro_Orcamento", deal.get("NroOrcamentoUniplus"));
-				negocio = Map();
-				negocio.put("id", deal.get("id"));
-				negocio.put("name", ifnull(deal.get("Deal_Name"), "Sem Nome"));
-				row.put("Neg_cio_Relacionado", negocio);
-				contato = deal.get("Contact_Name");
-				if(contato != null)
-				{
-					pessoa = Map();
-					pessoa.put("id", contato.get("id"));
-					pessoa.put("name", contato.get("name"));
-					row.put("Pessoa_Relacionada_Neg_cio", pessoa);
-				}
-				linhas.add(row);
-				conta = conta + 1;
+				row.put("Proprietario", owner.get("name"));
 			}
+			else
+			{
+				row.put("Proprietario", "Nao atribuido");
+			}
+			row.put("Montante", ifnull(deal.get("Amount"), 0));
+			row.put("Estagio", ifnull(deal.get("Stage"), "Sem Estagio"));
+			row.put("Nro_Pedido", deal.get("NroPedidoUniplus"));
+			row.put("Nro_Nota", deal.get("NroNotaFiscal"));
+			row.put("Nro_Orcamento", deal.get("NroOrcamentoUniplus"));
+			negocio = Map();
+			negocio.put("id", deal.get("id"));
+			negocio.put("name", ifnull(deal.get("Deal_Name"), "Sem Nome"));
+			row.put("Neg_cio_Relacionado", negocio);
+			contato = deal.get("Contact_Name");
+			if(contato != null)
+			{
+				pessoa = Map();
+				pessoa.put("id", contato.get("id"));
+				pessoa.put("name", contato.get("name"));
+				row.put("Pessoa_Relacionada_Neg_cio", pessoa);
+			}
+			linhas.add(row);
+			conta = conta + 1;
 		}
 	}
-	return linhas.toString();
 }
+return linhas.toString();
