@@ -1,23 +1,19 @@
 /**
- * Função: carga_prontuario_negocios  (editor livre -> categoria "automation")
+ * Função: carga_prontuario_negocios_1  (editor livre -> categoria "automation")
  * Argumento : accountId  (String)  -> ID da Conta selecionada na Reativação
  * Retorno   : String (JSON)        -> lista de linhas prontas p/ o subformulário
  *
- * FORMATO DO EDITOR LIVRE
- *  Este editor exige a assinatura:
- *      <retorno> <categoria>.<nome>(<tipo> <arg>) { <codigo> }
- *  e a categoria aceita aqui é "automation". Por isso a 1a linha é:
- *      string automation.carga_prontuario_negocios(string accountId)
- *  Cole o bloco INTEIRO abaixo (com a assinatura e as chaves).
+ * NOVIDADE (v2): coluna "Data Ganho" (api: Data_Ganho)
+ *  Para cada negócio, lê o Histórico de Estágios (Stage_History) e pega a data
+ *  em que o Stage virou "Closed Won" (Modified_Time da entrada). Essa é a data
+ *  em que o negócio foi registrado como GANHO. Negócios nunca ganhos ficam sem
+ *  data (coluna em branco).
  *
- * POR QUE NO SERVIDOR
- *  A busca do Client Script (ZDK) NÃO devolve Contact_Name (vem "undefined") e
- *  ainda traz todos os negócios da conta ao navegador (ex.: 101), beirando os
- *  10s. Aqui, no servidor, zoho.crm.searchRecords retorna Contact_Name completo
- *  ({id, name}) e monta só as 15 linhas necessárias em ~1s.
+ * OBS: são +1 chamada por negócio (getRelatedRecords). Roda no servidor, sem o
+ *  limite de 10s do Client Script.
  */
 
-string automation.carga_prontuario_negocios(string accountId)
+string automation.carga_prontuario_negocios_1(string accountId)
 {
 	linhas = List();
 	if(accountId != null && accountId != "")
@@ -55,6 +51,36 @@ string automation.carga_prontuario_negocios(string accountId)
 					pessoa.put("id", contato.get("id"));
 					pessoa.put("name", contato.get("name"));
 					row.put("Pessoa_Relacionada_Neg_cio", pessoa);
+				}
+				// ---- Data em que o negócio virou "Closed Won" (histórico) ----
+				historico = zoho.crm.getRelatedRecords("Stage_History", "Deals", deal.get("id").toLong());
+				dataGanho = null;
+				if(historico != null)
+				{
+					for each  h in historico
+					{
+						if(dataGanho == null && h.get("Stage") == "Closed Won")
+						{
+							mt = h.get("Modified_Time") + "";
+							sep = "T";
+							if(mt.indexOf("T") < 0)
+							{
+								sep = " ";
+							}
+							if(mt.indexOf(sep) > 0)
+							{
+								dataGanho = mt.subString(0, mt.indexOf(sep));
+							}
+							else if(mt.length() >= 10)
+							{
+								dataGanho = mt.subString(0, 10);
+							}
+						}
+					}
+				}
+				if(dataGanho != null)
+				{
+					row.put("Data_Ganho", dataGanho);
 				}
 				linhas.add(row);
 				conta = conta + 1;
