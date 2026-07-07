@@ -1,0 +1,76 @@
+/**
+ * Função STANDALONE: carga_prontuario_negocios
+ * Argumento : accountId  (String)  -> ID da Conta selecionada na Reativação
+ * Retorno   : String (JSON)        -> lista de linhas prontas p/ o subformulário
+ *
+ * POR QUE NO SERVIDOR
+ *  A busca do Client Script (ZDK) NÃO devolve o campo Contact_Name do negócio
+ *  (comprovado: vem "undefined") e ainda traz todos os negócios da conta para
+ *  o navegador (ex.: 101), o que estourava os 10s do Client Script.
+ *  Aqui, no servidor, zoho.crm.searchRecords retorna Contact_Name completo
+ *  ({id, name}) e monta apenas as 15 linhas necessárias em ~1s.
+ *
+ * COMO CRIAR
+ *  Configuração > Espaço do Desenvolvedor > Funções > Nova Função
+ *   - Nome de exibição/API: carga_prontuario_negocios
+ *   - Categoria: Standalone (Autônoma)
+ *   - Argumento: accountId  (tipo String)
+ *   - Tipo de retorno: String
+ *  Cole o corpo abaixo e Salve.
+ */
+
+list linhas = List();
+
+if(accountId != null && accountId != "")
+{
+    criteria = "(Account_Name:equals:" + accountId + ")";
+    deals = zoho.crm.searchRecords("Deals", criteria);
+
+    conta = 0;
+    for each deal in deals
+    {
+        if(conta < 15)
+        {
+            row = Map();
+
+            // Proprietário (Owner é um map com "name")
+            owner = deal.get("Owner");
+            if(owner != null)
+            {
+                row.put("Proprietario", owner.get("name"));
+            }
+            else
+            {
+                row.put("Proprietario", "Nao atribuido");
+            }
+
+            // Campos escalares do próprio negócio
+            row.put("Montante", ifnull(deal.get("Amount"), 0));
+            row.put("Estagio", ifnull(deal.get("Stage"), "Sem Estagio"));
+            row.put("Nro_Pedido", deal.get("NroPedidoUniplus"));
+            row.put("Nro_Nota", deal.get("NroNotaFiscal"));
+            row.put("Nro_Orcamento", deal.get("NroOrcamentoUniplus"));
+
+            // Lookup -> Negócios (id do próprio negócio)
+            negocio = Map();
+            negocio.put("id", deal.get("id"));
+            negocio.put("name", ifnull(deal.get("Deal_Name"), "Sem Nome"));
+            row.put("Neg_cio_Relacionado", negocio);
+
+            // Lookup -> Contatos (contato REAL do negócio; aqui o Contact_Name existe)
+            contato = deal.get("Contact_Name");
+            if(contato != null)
+            {
+                pessoa = Map();
+                pessoa.put("id", contato.get("id"));
+                pessoa.put("name", contato.get("name"));
+                row.put("Pessoa_Relacionada_Neg_cio", pessoa);
+            }
+
+            linhas.add(row);
+            conta = conta + 1;
+        }
+    }
+}
+
+return linhas.toString();
