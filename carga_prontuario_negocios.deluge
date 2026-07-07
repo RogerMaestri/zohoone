@@ -3,12 +3,12 @@
  * Argumento : accountId  (String)  -> ID da Conta selecionada na Reativação
  * Retorno   : String (JSON)        -> lista de linhas prontas p/ o subformulário
  *
- * COLUNA "Data Ganho" (api: Data_Ganho)  [v4]
- *  O zoho.crm.searchRecords do Deluge NÃO devolve Stage_Modified_Time (retorna
- *  um conjunto menor de campos que a API REST). Por isso, só para os negócios
- *  em "Closed Won", buscamos o registro completo com getRecordById e lemos o
- *  Stage_Modified_Time (data em que virou ganho). Negócios não ganhos ficam
- *  sem data. Campo _dbg_smt é diagnóstico temporário (o subform ignora).
+ * Versão final estável: monta no servidor as até 15 linhas do subformulário
+ * "Prontuario_de_Negocios" com Proprietário, Montante, Estágio, Nros, o Negócio
+ * relacionado e a Pessoa Relacionada (contato REAL do negócio, com id e nome).
+ *
+ * Chamada pelo Client Script "Carga_Prontuario_Matriz_Oficial" via
+ * ZDK.Apps.CRM.Functions.execute('carga_prontuario_negocios_1', {accountId}).
  */
 
 string automation.carga_prontuario_negocios_1(string accountId)
@@ -49,30 +49,6 @@ string automation.carga_prontuario_negocios_1(string accountId)
 					pessoa.put("id", contato.get("id"));
 					pessoa.put("name", contato.get("name"));
 					row.put("Pessoa_Relacionada_Neg_cio", pessoa);
-				}
-				// ---- Data Ganho: só para "Closed Won", via registro completo ----
-				estagio = ifnull(deal.get("Stage"), "");
-				if(estagio == "Closed Won")
-				{
-					full = zoho.crm.getRecordById("Deals", deal.get("id").toLong());
-					smt = null;
-					if(full != null)
-					{
-						smt = full.get("Stage_Modified_Time");
-					}
-					row.put("_dbg_smt", smt + "");   // DIAGNÓSTICO TEMPORÁRIO
-					if(smt != null)
-					{
-						s = smt + "";
-						if(s.indexOf("T") > 0)
-						{
-							row.put("Data_Ganho", s.subString(0, s.indexOf("T")));
-						}
-						else if(s.length() >= 10)
-						{
-							row.put("Data_Ganho", s.subString(0, 10));
-						}
-					}
 				}
 				linhas.add(row);
 				conta = conta + 1;
