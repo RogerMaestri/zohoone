@@ -3,14 +3,12 @@
  * Argumento : accountId  (String)  -> ID da Conta selecionada na Reativação
  * Retorno   : String (JSON)        -> lista de linhas prontas p/ o subformulário
  *
- * COLUNA "Data Ganho" (api: Data_Ganho)  [v3]
- *  Para negócios em "Closed Won", usa Stage_Modified_Time (data da última
- *  mudança de estágio = data em que virou ganho). Esse campo já vem no
- *  searchRecords -> sem chamadas extras. Comprovado batendo com o histórico.
- *  Negócios não ganhos ficam sem data (coluna em branco).
- *
- *  (A tentativa anterior via zoho.crm.getRelatedRecords("Stage_History", ...)
- *   não retorna dados dentro do Deluge, por isso foi trocada.)
+ * COLUNA "Data Ganho" (api: Data_Ganho)  [v4]
+ *  O zoho.crm.searchRecords do Deluge NÃO devolve Stage_Modified_Time (retorna
+ *  um conjunto menor de campos que a API REST). Por isso, só para os negócios
+ *  em "Closed Won", buscamos o registro completo com getRecordById e lemos o
+ *  Stage_Modified_Time (data em que virou ganho). Negócios não ganhos ficam
+ *  sem data. Campo _dbg_smt é diagnóstico temporário (o subform ignora).
  */
 
 string automation.carga_prontuario_negocios_1(string accountId)
@@ -52,10 +50,17 @@ string automation.carga_prontuario_negocios_1(string accountId)
 					pessoa.put("name", contato.get("name"));
 					row.put("Pessoa_Relacionada_Neg_cio", pessoa);
 				}
-				// ---- Data Ganho: só para negócios "Closed Won" ----
-				if(deal.get("Stage") == "Closed Won")
+				// ---- Data Ganho: só para "Closed Won", via registro completo ----
+				estagio = ifnull(deal.get("Stage"), "");
+				if(estagio == "Closed Won")
 				{
-					smt = deal.get("Stage_Modified_Time");
+					full = zoho.crm.getRecordById("Deals", deal.get("id").toLong());
+					smt = null;
+					if(full != null)
+					{
+						smt = full.get("Stage_Modified_Time");
+					}
+					row.put("_dbg_smt", smt + "");   // DIAGNÓSTICO TEMPORÁRIO
 					if(smt != null)
 					{
 						s = smt + "";
