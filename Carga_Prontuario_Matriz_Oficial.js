@@ -1,5 +1,5 @@
 /**
- * Carga_Prontuario_Matriz_Oficial (v13 - anti-timeout)
+ * Carga_Prontuario_Matriz_Oficial (v14 - loader anti-timeout)
  * Ferramenta: ZOHO CRM  |  Tipo: Script de Cliente (Client Script)
  * Módulo: Reativacoes  |  Campo: Conta  |  Evento: Field onChange
  *
@@ -8,23 +8,22 @@
  *  "Prontuario_de_Negocios" com os Negócios (Deals) daquela Conta,
  *  incluindo a coluna "Pessoa Relacionada" (contato de cada negócio).
  *
- * PORQUÊ DESTA VERSÃO — erro "Tempo esgotado"
- *  O Client Script do Zoho tem um limite RÍGIDO de 10 segundos de execução.
- *  O lookup "Contact_Name" aponta para outro módulo (Contatos); resolver esse
- *  lookup a cada linha é uma operação de rede. Na v12 ele era lido DUAS vezes
- *  por linha (id + nome); em ~15 negócios isso passava dos 10s -> timeout.
- *  (O "Owner" não trava porque os usuários ficam em cache no navegador.)
+ * SOBRE O ERRO "Tempo esgotado"
+ *  O Client Script tem limite RÍGIDO de 10s. As demais colunas vêm dos
+ *  campos próprios do negócio (embutidos na busca leve) e são instantâneas.
+ *  Já o lookup "Contact_Name" (módulo Contatos) NÃO vem embutido na busca
+ *  leve: para cada negócio o ZDK faz uma ida ao servidor só para resolver o
+ *  contato. Com vários negócios, isso passa dos 10s.
  *
- *  Correções:
- *   1) resolverLookup(): lê cada lookup UMA ÚNICA vez por linha e devolve
- *      { id, name } — corta pela metade a carga da coluna de contato.
- *   2) TRAVA DE TEMPO (8s): o loop encerra antes do corte de 10s do Client
- *      Script, então o script SEMPRE conclui e grava o que já montou
- *      (em vez de estourar com "Tempo esgotado").
+ *  IMPORTANTE: a coluna "Pessoa Relacionada" DEVE ser lookup para Contatos
+ *  (ela guarda uma PESSOA). O negócio é só a origem que informa QUAL contato.
+ *  Trocar o campo para lookup de Deals não resolveria o timeout e apontaria
+ *  para um negócio em vez de uma pessoa (duplicando "Negócio Relacionado").
  *
- *  Se ainda assim faltar tempo para muitos negócios, reduza LIMITE_LINHAS
- *  (ex.: 10) ou LIMITE_MS. O contato continua vindo do lookup nativo do
- *  Negócio (Contact_Name), com o ID REAL do contato.
+ *  SOLUÇÃO (oficial do Zoho - Kaizen #139): enquanto um loader estiver ativo,
+ *  a execução fica suspensa e o timeout de 10s NÃO ocorre. Por isso toda a
+ *  lógica roda entre ZDK.Client.showLoader() e hideLoader() (o hideLoader é
+ *  chamado no 'finally', então o loader nunca fica preso mesmo com erro).
  */
 
 // Resolve um lookup UMA única vez e devolve { id, name }.
@@ -42,9 +41,10 @@ function resolverLookup(deal, apiName) {
     };
 }
 
+// Ativa o loader ANTES do processamento -> suspende o timeout de 10s.
+ZDK.Client.showLoader({ type: 'page', template: 'spinner', message: 'Carregando negócios da conta...' });
+
 try {
-    var INICIO        = Date.now();   // marca o início para a trava de tempo
-    var LIMITE_MS     = 8000;         // encerra antes do corte de 10s do Client Script
     var LIMITE_LINHAS = 15;           // teto de negócios processados
 
     var contaField  = ZDK.Page.getField('Conta');
@@ -61,18 +61,11 @@ try {
     var limite = Math.min(deals.length, LIMITE_LINHAS);
 
     for (var i = 0; i < limite; i++) {
-
-        // Trava de tempo: para antes de bater no limite de 10s e grava o que já temos.
-        if (Date.now() - INICIO > LIMITE_MS) {
-            log('Trava de tempo acionada na linha ' + i + ' de ' + limite);
-            break;
-        }
-
         var deal = deals[i];
 
         // Cada lookup é resolvido UMA única vez (id + nome reutilizados).
-        var contato = resolverLookup(deal, 'Contact_Name');   // -> Contatos
-        var owner   = resolverLookup(deal, 'Owner');          // -> Usuário (cache)
+        var contato = resolverLookup(deal, 'Contact_Name');   // -> Contatos (ida ao servidor)
+        var owner   = resolverLookup(deal, 'Owner');          // -> Usuário (cache, rápido)
 
         linhas.push({
             'Proprietario'                : owner.name || 'Nao atribuido',
@@ -91,8 +84,11 @@ try {
     }
 
     subform.setValue(linhas);
-    log('Subform populado: ' + linhas.length + ' em ' + (Date.now() - INICIO) + 'ms');
+    log('Subform populado: ' + linhas.length);
 
 } catch (e) {
     log('ERRO GLOBAL: ' + e);
+} finally {
+    // Sempre encerra o loader (mesmo em erro ou return antecipado).
+    ZDK.Client.hideLoader();
 }
