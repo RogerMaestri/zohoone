@@ -5,6 +5,14 @@ Carregado automaticamente no início de toda sessão. Enxuto de propósito.
 ## Normativos (leia antes de mexer)
 Este projeto tem o **propósito** em `docs/CONCEITO.md` e a **especificação técnica canônica**
 em `docs/CANONICO.md`. Entrada a frio: `docs/HANDOFF.md`. Pendências: `docs/PENDENCIAS.md`.
+Técnicas/descobertas fora da doc oficial: `docs/APRENDIZADOS.md`.
+
+## Norma de aprendizado (obrigatória)
+Toda técnica não-óbvia que **funcionar** e **não estiver na documentação oficial** (truque de
+diagnóstico, quirk de API, pegadinha vencida) **deve ser registrada** — o invariante que o
+código obedece vai para `docs/CANONICO.md`; a técnica de "como trabalhar/depurar" vai para
+`docs/APRENDIZADOS.md`. Nunca deixe esse conhecimento só na conversa: o próximo agente (ou o
+Roger) não terá quem descobriu por perto.
 
 ## Regra das duas verdades
 O **código descreve o que É**; **CONCEITO/CANONICO definem o que DEVE SER**. Quando o código
