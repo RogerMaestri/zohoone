@@ -12,6 +12,8 @@ Leia nesta ordem:
    inventário de automações e como rodar/verificar/reverter cada uma.
 
 Apoio:
+- **[APRENDIZADOS.md](APRENDIZADOS.md)** — caderno vivo de técnicas e descobertas **fora da
+  documentação oficial** (diagnóstico, quirks de API). Reuso em casos futuros.
 - **[PENDENCIAS.md](PENDENCIAS.md)** — o que está aberto (dívidas técnicas e decisões do líder).
 - **[fases/](fases/)** — relatórios de fase, **datados e históricos** (não são o estado atual).
 
