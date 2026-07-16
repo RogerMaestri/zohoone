@@ -1,0 +1,59 @@
+/**
+ * Função: carga_prontuario_negocios_1  (editor livre -> categoria "automation")
+ * Argumento : accountId  (String)  -> ID da Conta selecionada na Reativação
+ * Retorno   : String (JSON)        -> lista de linhas prontas p/ o subformulário
+ *
+ * Versão final estável: monta no servidor as até 15 linhas do subformulário
+ * "Prontuario_de_Negocios" com Proprietário, Montante, Estágio, Nros, o Negócio
+ * relacionado e a Pessoa Relacionada (contato REAL do negócio, com id e nome).
+ *
+ * Chamada pelo Client Script "Carga_Prontuario_Matriz_Oficial" via
+ * ZDK.Apps.CRM.Functions.execute('carga_prontuario_negocios_1', {accountId}).
+ */
+
+string automation.carga_prontuario_negocios_1(string accountId)
+{
+	linhas = List();
+	if(accountId != null && accountId != "")
+	{
+		criteria = "(Account_Name:equals:" + accountId + ")";
+		deals = zoho.crm.searchRecords("Deals", criteria);
+		conta = 0;
+		for each  deal in deals
+		{
+			if(conta < 15)
+			{
+				row = Map();
+				owner = deal.get("Owner");
+				if(owner != null)
+				{
+					row.put("Proprietario", owner.get("name"));
+				}
+				else
+				{
+					row.put("Proprietario", "Nao atribuido");
+				}
+				row.put("Montante", ifnull(deal.get("Amount"), 0));
+				row.put("Estagio", ifnull(deal.get("Stage"), "Sem Estagio"));
+				row.put("Nro_Pedido", deal.get("NroPedidoUniplus"));
+				row.put("Nro_Nota", deal.get("NroNotaFiscal"));
+				row.put("Nro_Orcamento", deal.get("NroOrcamentoUniplus"));
+				negocio = Map();
+				negocio.put("id", deal.get("id"));
+				negocio.put("name", ifnull(deal.get("Deal_Name"), "Sem Nome"));
+				row.put("Neg_cio_Relacionado", negocio);
+				contato = deal.get("Contact_Name");
+				if(contato != null)
+				{
+					pessoa = Map();
+					pessoa.put("id", contato.get("id"));
+					pessoa.put("name", contato.get("name"));
+					row.put("Pessoa_Relacionada_Neg_cio", pessoa);
+				}
+				linhas.add(row);
+				conta = conta + 1;
+			}
+		}
+	}
+	return linhas.toString();
+}
